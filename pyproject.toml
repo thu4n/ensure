@@ -1,0 +1,14 @@
+[project]
+name = "ispent"
+version = "0.1.0"
+description = "Quick expense tracker CLI using local MLX LLM"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dotenv>=0.9.9",
+    "httpx>=0.28.1",
+    "mlx-lm>=0.31.3",
+]
+
+[tool.uv]
+package = false
