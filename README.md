@@ -58,12 +58,6 @@ ispent "45k banh mi for lunch"
 ispent "120k taxi ride yesterday"
 ```
 
-To execute real transactions to the API, uncomment lines 125–127 in `main.py`:
-```python
-res = post_transaction(payload)
-print(f"\nResponse: {res}")
-```
-
 ---
 
 ## Managing Dependencies
