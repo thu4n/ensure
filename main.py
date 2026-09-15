@@ -27,6 +27,14 @@ EXTRACTION_SCHEMA = {
     "category": "string (must match one of the available categories exactly)"
 }
 
+def file_exists(file_path) -> bool:
+    if os.path.exists(file_path):
+        print(f"The file {file_path} exists.")
+        return True
+    else:
+        print(f"The file {file_path} does not exist.")
+        return False
+
 def get_accounts()-> dict:
     headers = {
         "X-Api-Key": SURE_API_KEY,
@@ -44,6 +52,8 @@ def get_accounts()-> dict:
             if page >= pagination.get("total_pages", 1):
                 break
             page += 1
+    with open('.data/accounts.json', 'w') as file:
+        file.write(json.dumps(account_map))
     return account_map
 
 def get_categories() -> dict:
@@ -63,6 +73,8 @@ def get_categories() -> dict:
             if page >= pagination.get("total_pages", 1):
                 break
             page += 1
+    with open('.data/categories.json', 'w') as file:
+        file.write(json.dumps(category_map))
     return category_map
 
 def extract_transaction_details(user_input: str, category_map: dict, account_map: dict) -> dict:
