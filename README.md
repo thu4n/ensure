@@ -5,7 +5,8 @@ A fast, lightweight CLI tool to parse natural language expense descriptions into
 ## Features
 
 - **Local LLM Parsing**: Uses `mlx-community/Llama-3.2-3B-Instruct-4bit` for fast, offline extraction.
-- **Dynamic Category Mapping**: Queries the API for categories on the fly and instructs the LLM to match the closest category.
+- **Contextual Category Mapping**: Uses past transaction examples from each category to provide context to the LLM for accurate categorization.
+- **Local Cache & `--update`**: Caches categories, accounts, and category sample transactions locally in `.data/` for near-instant execution, only re-fetching from the API when run with `--update`.
 - **Single-File Logic**: All application code lives in `main.py`.
 - **Package-free UV App**: Managed via `pyproject.toml` without unnecessary package overhead.
 
@@ -53,9 +54,16 @@ source ~/.zshrc
 You can now run `ispent` from any folder on your laptop:
 
 ```bash
+# Parse and post transactions (uses local cache for fast loading)
 ispent "200k on new jacket"
 ispent "45k banh mi for lunch"
 ispent "120k taxi ride yesterday"
+
+# Update local cache (fetches latest accounts, categories, and sample transactions from API)
+ispent --update
+
+# You can also update the cache and parse an expense in a single command
+ispent --update "45k banh mi for lunch"
 ```
 
 ---
