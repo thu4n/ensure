@@ -151,8 +151,11 @@ def extract_transaction_details(
     category_map: dict,
     account_map: dict,
     category_samples: dict = None,
+    model=None,
+    tokenizer=None,
 ) -> dict:
-    model, tokenizer = load(MODEL_ID)
+    if model is None or tokenizer is None:
+        model, tokenizer = load(MODEL_ID)
     today = datetime.now().strftime("%Y-%m-%d")
 
     category_samples = category_samples or {}
@@ -296,24 +299,54 @@ def main():
             print("Cache updated successfully.")
             return
         else:
-            print('Usage: ispent [--update] "<expense sentence>"')
+            print('Usage: ispent [--update] "<expense 1; expense 2; ...>"')
             sys.exit(1)
 
-    print(f"Parsing: \"{raw_input}\"...")
+    transactions = [item.strip() for item in raw_input.split(";") if item.strip()]
+    if not transactions:
+        if update_flag:
+            print("Cache updated successfully.")
+            return
+        else:
+            print('Usage: ispent [--update] "<expense 1; expense 2; ...>"')
+            sys.exit(1)
 
-    try:
-        parsed = extract_transaction_details(raw_input, category_map, account_map, category_samples)
-        print(f"\nParsed by LLM:\n{json.dumps(parsed, indent=2)}")
-        payload = build_payload(parsed, category_map, account_map)
+    total = len(transactions)
+    if total > 1:
+        print(f"Found {total} transactions to process.")
 
-        print("\nGenerated API Payload:")
-        print(json.dumps(payload, indent=2))
+    model, tokenizer = load(MODEL_ID)
+    success_count = 0
 
-        res = post_transaction(payload)
-        print(f"\nResponse: {res}")
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    for idx, tx_input in enumerate(transactions, start=1):
+        prefix = f"[{idx}/{total}] " if total > 1 else ""
+        print(f"\n{prefix}Parsing: \"{tx_input}\"...")
+
+        try:
+            parsed = extract_transaction_details(
+                tx_input,
+                category_map,
+                account_map,
+                category_samples,
+                model=model,
+                tokenizer=tokenizer,
+            )
+            print(f"Parsed by LLM:\n{json.dumps(parsed, indent=2)}")
+            payload = build_payload(parsed, category_map, account_map)
+
+            print("\nGenerated API Payload:")
+            print(json.dumps(payload, indent=2))
+
+            res = post_transaction(payload)
+            print(f"\nResponse: {res}")
+            success_count += 1
+        except Exception as e:
+            print(f"Error processing \"{tx_input}\": {e}", file=sys.stderr)
+
+    if total > 1:
+        print(f"\nCompleted: {success_count}/{total} transactions processed successfully.")
+        if success_count < total:
+            sys.exit(1)
 
 
 if __name__ == "__main__":

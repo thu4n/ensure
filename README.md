@@ -59,10 +59,13 @@ ispent "200k on new jacket"
 ispent "45k banh mi for lunch"
 ispent "120k taxi ride yesterday"
 
+# Input multiple transactions at once (separated by ';')
+ispent "45k banh mi ; 30k coffee ; 120k taxi to work"
+
 # Update local cache (fetches latest accounts, categories, and sample transactions from API)
 ispent --update
 
-# You can also update the cache and parse an expense in a single command
+# You can also update the cache and parse expenses in a single command
 ispent --update "45k banh mi for lunch"
 ```
 
