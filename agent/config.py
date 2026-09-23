@@ -19,6 +19,10 @@ MODEL_ID = "mlx-community/Llama-3.2-3B-Instruct-4bit"
 DEFAULT_ACCOUNT_ID = os.getenv("DEFAULT_ACCOUNT_ID", "81cb8465-1cad-47d5-8061-b8e4baa954db")  # Wallet
 DEFAULT_CATEGORY_ID = "adaac5f4-5de7-4d2b-b3d9-45079ebf6208"  # Main meal
 
+# Cloudflare Worker Configuration
+CLOUDFLARE_WORKER_URL = os.getenv("CLOUDFLARE_WORKER_URL", "").rstrip("/")
+CLOUDFLARE_AUTH_TOKEN = os.getenv("CLOUDFLARE_AUTH_TOKEN", "")
+
 EXTRACTION_SCHEMA = {
     "account": "string (must match one of the available accounts name exactly)",
     "amount": "number (positive numeric value, convert 45k -> 45000)",
@@ -26,4 +30,6 @@ EXTRACTION_SCHEMA = {
     "currency": "string (e.g. VND, USD, EUR)",
     "date": "string (YYYY-MM-DD format)",
     "category": "string (must match one of the available categories exactly)",
+    "classification": "string ('income' or 'expense')",
 }
+

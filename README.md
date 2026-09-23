@@ -63,11 +63,11 @@ ensure "received 500k freelance bonus"
 # Input multiple transactions at once (separated by ';')
 ensure "45k banh mi ; 30k coffee ; 120k taxi to work"
 
-# Update local cache (fetches latest accounts, categories, and sample transactions from API)
-ensure --update
+# Pull and process pending notifications from Cloudflare Worker
+ensure --sync-transactions
 
-# You can also update the cache and parse expenses in a single command
-ensure --update "45k banh mi for lunch"
+# Cache transaction history to enrich model judgment
+ensure --cache-history
 ```
 
 ---

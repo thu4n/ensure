@@ -6,6 +6,8 @@ from agent.config import (
     ACCOUNTS_CACHE_FILE,
     CATEGORIES_CACHE_FILE,
     CATEGORY_SAMPLES_CACHE_FILE,
+    CLOUDFLARE_AUTH_TOKEN,
+    CLOUDFLARE_WORKER_URL,
     DATA_DIR,
     SURE_API_KEY,
     SURE_API_URL,
@@ -77,7 +79,7 @@ def fetch_category_samples(client: httpx.Client, headers: dict, category_map: di
     return samples
 
 
-def fetch_and_cache_all() -> tuple[dict, dict, dict]:
+def cache_history() -> tuple[dict, dict, dict]:
     headers = {
         "X-Api-Key": SURE_API_KEY,
     }
@@ -85,7 +87,7 @@ def fetch_and_cache_all() -> tuple[dict, dict, dict]:
         print("Fetching categories and accounts from API...")
         category_map = fetch_categories(client, headers)
         account_map = fetch_accounts(client, headers)
-        print(f"Fetching sample transactions for {len(category_map)} categories...")
+        print(f"Caching transaction history for {len(category_map)} categories to enrich model judgment...")
         category_samples = fetch_category_samples(client, headers, category_map)
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -94,38 +96,42 @@ def fetch_and_cache_all() -> tuple[dict, dict, dict]:
     CATEGORY_SAMPLES_CACHE_FILE.write_text(
         json.dumps(category_samples, indent=2), encoding="utf-8"
     )
-
+    print(f"History cached successfully to {CATEGORY_SAMPLES_CACHE_FILE}.")
     return category_map, account_map, category_samples
 
 
 def load_data(force_update: bool = False) -> tuple[dict, dict, dict]:
-    cache_exists = (
-        CATEGORIES_CACHE_FILE.exists()
-        and ACCOUNTS_CACHE_FILE.exists()
-        and CATEGORY_SAMPLES_CACHE_FILE.exists()
-    )
+    category_map = {}
+    account_map = {}
+    category_samples = {}
 
-    if not force_update and cache_exists:
+    headers = {"X-Api-Key": SURE_API_KEY}
+
+    if not force_update and CATEGORIES_CACHE_FILE.exists() and ACCOUNTS_CACHE_FILE.exists():
         try:
             category_map = json.loads(CATEGORIES_CACHE_FILE.read_text(encoding="utf-8"))
             account_map = json.loads(ACCOUNTS_CACHE_FILE.read_text(encoding="utf-8"))
-            category_samples = json.loads(CATEGORY_SAMPLES_CACHE_FILE.read_text(encoding="utf-8"))
             print(f"Loaded {len(category_map)} categories and {len(account_map)} accounts from cache.")
-            return category_map, account_map, category_samples
         except Exception as e:
             print(f"Cache read error: {e}. Re-fetching from API...", file=sys.stderr)
 
-    if force_update:
-        print("Updating local cache from API (--update specified)...")
-    else:
-        print("Local cache not found. Fetching initial data from API...")
+    if not category_map or not account_map:
+        with httpx.Client(base_url=SURE_API_URL) as client:
+            print("Fetching categories and accounts from API...")
+            category_map = fetch_categories(client, headers)
+            account_map = fetch_accounts(client, headers)
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        CATEGORIES_CACHE_FILE.write_text(json.dumps(category_map, indent=2), encoding="utf-8")
+        ACCOUNTS_CACHE_FILE.write_text(json.dumps(account_map, indent=2), encoding="utf-8")
 
-    category_map, account_map, category_samples = fetch_and_cache_all()
-    print(
-        f"Saved {len(category_map)} categories, {len(account_map)} accounts, "
-        f"and {len(category_samples)} category samples to local cache."
-    )
+    if CATEGORY_SAMPLES_CACHE_FILE.exists():
+        try:
+            category_samples = json.loads(CATEGORY_SAMPLES_CACHE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            category_samples = {}
+
     return category_map, account_map, category_samples
+
 
 
 def post_transaction(payload: dict):
@@ -135,4 +141,41 @@ def post_transaction(payload: dict):
     }
     with httpx.Client(base_url=SURE_API_URL) as client:
         response = client.post("transactions", json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
         return response.json()
+
+
+def fetch_pending_transactions() -> list[dict]:
+    if not CLOUDFLARE_WORKER_URL:
+        raise ValueError("CLOUDFLARE_WORKER_URL is not set in .env")
+
+    headers = {}
+    if CLOUDFLARE_AUTH_TOKEN:
+        headers["Authorization"] = f"Bearer {CLOUDFLARE_AUTH_TOKEN}"
+
+    with httpx.Client(timeout=15) as client:
+        response = client.get(f"{CLOUDFLARE_WORKER_URL}/pending", headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+
+def mark_transactions_synced(ids: list[str]) -> dict:
+    if not ids:
+        return {"status": "synced", "count": 0}
+
+    if not CLOUDFLARE_WORKER_URL:
+        raise ValueError("CLOUDFLARE_WORKER_URL is not set in .env")
+
+    headers = {"Content-Type": "application/json"}
+    if CLOUDFLARE_AUTH_TOKEN:
+        headers["Authorization"] = f"Bearer {CLOUDFLARE_AUTH_TOKEN}"
+
+    with httpx.Client(timeout=15) as client:
+        response = client.post(
+            f"{CLOUDFLARE_WORKER_URL}/sync",
+            json={"ids": ids},
+            headers=headers,
+        )
+        response.raise_for_status()
+        return response.json()
+
