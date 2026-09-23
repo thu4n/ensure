@@ -1,0 +1,17 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "ensure-worker",
+  "main": "src/entry.py",
+  "compatibility_date": "2026-09-22",
+  "compatibility_flags": [
+    "python_workers",
+    "disable_python_external_sdk"
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ensure-db",
+      "database_id": "df1ad50c-6645-4715-b82f-2b8bba89e0ae"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS transactions (
+    id TEXT PRIMARY KEY,
+    raw TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    synced INTEGER DEFAULT 0,
+    synced_at DATETIME
+);
