@@ -41,7 +41,29 @@ class Default(WorkerEntrypoint):
 
             # 2. Ingest raw SMS: POST / or POST /ingest
             if method == "POST" and path in ("/", "/ingest"):
-                raw_text = (await request.text()).strip()
+                content_type = request.headers.get("content-type", "").lower()
+                raw_text = ""
+
+                # Support Apple Shortcuts JSON payload (e.g. {"text": "..."}) or raw text
+                if "application/json" in content_type:
+                    try:
+                        body = await request.json()
+                        if isinstance(body, dict):
+                            raw_text = str(
+                                body.get("text")
+                                or body.get("raw")
+                                or body.get("message")
+                                or body.get("body")
+                                or ""
+                            )
+                        else:
+                            raw_text = str(body)
+                    except Exception:
+                        raw_text = await request.text()
+                else:
+                    raw_text = await request.text()
+
+                raw_text = raw_text.strip()
                 if not raw_text:
                     return Response.json({"error": "Empty body"}, status=400)
 
