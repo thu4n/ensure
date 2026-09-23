@@ -36,12 +36,39 @@ pnpm wrangler d1 execute ensure-db --local --file=./schema.sql
 pnpm wrangler d1 execute ensure-db --remote --file=./schema.sql
 ```
 
+*(Note: The Worker also auto-initializes the table via `CREATE TABLE IF NOT EXISTS` if not already created).*
+
 ---
 
-## 2. API Endpoints
+## 2. Authentication (API Secret Token)
+
+To protect your endpoints, configure an `AUTH_TOKEN`:
+
+- **Production (Cloudflare Dashboard):**
+  Worker $\rightarrow$ **Settings** $\rightarrow$ **Variables and Secrets** $\rightarrow$ **Add** $\rightarrow$ Choose **Secret** $\rightarrow$ Name: `AUTH_TOKEN`.
+  *(Or run `pnpm wrangler secret put AUTH_TOKEN`)*
+
+- **Local Dev:**
+  Create `.dev.vars` in `cloudflare/`:
+  ```env
+  AUTH_TOKEN=your-secret-token
+  ```
+
+### How to Authenticate Requests
+
+Send the token via the `Authorization` header:
+```bash
+curl -H "Authorization: Bearer <AUTH_TOKEN>" https://<worker>.<subdomain>.workers.dev/pending
+```
+
+*(Or via query parameter fallback for phone shortcuts: `?token=<AUTH_TOKEN>`)*
+
+---
+
+## 3. API Endpoints
 
 ### 1. Ingest notification (Phone)
-- **Method:** `POST /`
+- **Method:** `POST /` or `POST /ingest`
 - **Body:** Raw text from the banking app's notification.
 - **Behavior:** Hashes content to deduplicate retries, inserts with `synced = 0`.
 - **Response:** `{"status": "received", "id": "4a2f8b..."}`
@@ -73,7 +100,7 @@ pnpm wrangler d1 execute ensure-db --remote --file=./schema.sql
 
 ---
 
-## 3. Local Development & Deployment
+## 4. Local Development & Deployment
 
 ```bash
 # Start local dev server (uses local SQLite simulation)
@@ -85,6 +112,6 @@ pnpm deploy
 
 ---
 
-## 4. Privacy & Data Security
+## 5. Privacy & Data Security
 
 Cloudflare does **not** inspect, read, or train AI models on customer data stored in D1. Cloudflare acts strictly as an infrastructure provider under standard data processing agreements, and data in D1 is encrypted at rest (AES-256) and in transit (TLS).

@@ -1,16 +1,46 @@
 import hashlib
 import json
+from urllib.parse import parse_qs, urlparse
 from workers import Response, WorkerEntrypoint
 
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        url = request.url
+        parsed_url = urlparse(request.url)
+        path = parsed_url.path.rstrip("/") or "/"
         method = request.method
 
+        # 1. Enforce authentication if AUTH_TOKEN is set in environment
+        expected_token = getattr(self.env, "AUTH_TOKEN", None)
+        if expected_token:
+            auth_header = request.headers.get("Authorization") or ""
+            token = None
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:].strip()
+            else:
+                # Fallback: check query parameter ?token=... or ?key=...
+                query = parse_qs(parsed_url.query)
+                token = query.get("token", [None])[0] or query.get("key", [None])[0]
+
+            if token != expected_token:
+                return Response.json({"error": "Unauthorized"}, status=401)
+
         try:
-            # 1. Phone pushes raw SMS text: POST /
-            if method == "POST" and (url.endswith("/") or url.endswith("/ingest")):
+            # Auto-initialize table if it doesn't exist
+            await self.env.DB.prepare(
+                """
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id TEXT PRIMARY KEY,
+                    raw TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    synced INTEGER DEFAULT 0,
+                    synced_at DATETIME
+                )
+                """
+            ).run()
+
+            # 2. Ingest raw SMS: POST / or POST /ingest
+            if method == "POST" and path in ("/", "/ingest"):
                 raw_text = (await request.text()).strip()
                 if not raw_text:
                     return Response.json({"error": "Empty body"}, status=400)
@@ -25,16 +55,16 @@ class Default(WorkerEntrypoint):
 
                 return Response.json({"status": "received", "id": msg_id}, status=200)
 
-            # 2. Local Mac pulls pending (unsynced) items: GET /pending
-            if method == "GET" and url.endswith("/pending"):
+            # 3. Pull pending (unsynced) transactions: GET /pending
+            if method == "GET" and path == "/pending":
                 stmt = self.env.DB.prepare(
                     "SELECT id, raw, created_at FROM transactions WHERE synced = 0 ORDER BY created_at ASC"
                 )
                 result = await stmt.all()
                 return Response.json(result.results, status=200)
 
-            # 3. Local Mac marks items as synced after LLM & Sure API succeed: POST /sync
-            if method == "POST" and url.endswith("/sync"):
+            # 4. Acknowledge sync: POST /sync
+            if method == "POST" and path == "/sync":
                 body = await request.json()
                 ids = body.get("ids", [])
                 if not ids and "id" in body:
