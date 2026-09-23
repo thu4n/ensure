@@ -39,7 +39,7 @@ class Default(WorkerEntrypoint):
                 """
             ).run()
 
-            # 2. Ingest raw SMS: POST / or POST /ingest
+            # 2. Ingest raw notification: POST / or POST /ingest
             if method == "POST" and path in ("/", "/ingest"):
                 content_type = request.headers.get("content-type", "").lower()
                 raw_text = ""
@@ -67,7 +67,7 @@ class Default(WorkerEntrypoint):
                 if not raw_text:
                     return Response.json({"error": "Empty body"}, status=400)
 
-                # Deterministic ID from raw SMS content (auto-deduplicates retries)
+                # Deterministic ID from raw notification content (auto-deduplicates retries)
                 msg_id = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()[:16]
 
                 stmt = self.env.DB.prepare(
