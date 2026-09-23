@@ -1,6 +1,6 @@
-# ispent
+# ensure
 
-A fast, lightweight CLI tool to parse natural language expense descriptions into structured transactions using a local Apple Silicon LLM (`mlx-lm`) and post them to your finance API.
+A fast, lightweight CLI tool to parse natural language expense and income descriptions into structured transactions using a local Apple Silicon LLM (`mlx-lm`) and post them to your finance API (Sure).
 
 ## Features
 
@@ -34,12 +34,12 @@ DEFAULT_ACCOUNT_ID="your-default-account-uuid"
 
 ---
 
-## Global Setup (`ispent` from anywhere)
+## Global Setup (`ensure` from anywhere)
 
-To run `ispent` from any directory in your terminal, an alias is added to `~/.zshrc`:
+To run `ensure` from any directory in your terminal, an alias is added to `~/.zshrc`:
 
 ```bash
-alias ispent="uv run --directory /Users/thu4n/repos/ispent python main.py"
+alias ensure="uv run --directory /Users/thu4n/repos/ispent python main.py"
 ```
 
 Reload your shell or open a new terminal:
@@ -51,22 +51,23 @@ source ~/.zshrc
 
 ## Usage
 
-You can now run `ispent` from any folder on your laptop:
+You can now run `ensure` from any folder on your laptop:
 
 ```bash
 # Parse and post transactions (uses local cache for fast loading)
-ispent "200k on new jacket"
-ispent "45k banh mi for lunch"
-ispent "120k taxi ride yesterday"
+ensure "200k on new jacket"
+ensure "45k banh mi for lunch"
+ensure "120k taxi ride yesterday"
+ensure "received 500k freelance bonus"
 
 # Input multiple transactions at once (separated by ';')
-ispent "45k banh mi ; 30k coffee ; 120k taxi to work"
+ensure "45k banh mi ; 30k coffee ; 120k taxi to work"
 
 # Update local cache (fetches latest accounts, categories, and sample transactions from API)
-ispent --update
+ensure --update
 
 # You can also update the cache and parse expenses in a single command
-ispent --update "45k banh mi for lunch"
+ensure --update "45k banh mi for lunch"
 ```
 
 ---
@@ -82,4 +83,4 @@ uv add <package-name>
 # Remove a dependency
 uv remove <package-name>
 ```
-The global `ispent` launcher will automatically pick up updated dependencies on the next run.
+The global `ensure` launcher will automatically pick up updated dependencies on the next run.

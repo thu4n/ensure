@@ -1,7 +1,7 @@
 [project]
-name = "ispent"
+name = "ensure"
 version = "0.1.0"
-description = "Quick expense tracker CLI using local MLX LLM"
+description = "Quick expense & income tracker CLI using local MLX LLM"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
