@@ -1,6 +1,6 @@
 # ensure-worker (Cloudflare Ingestion Buffer)
 
-A lightweight buffer Worker that receives raw bank and card SMS from your phone, stores them in Cloudflare D1 (SQLite), and exposes simple endpoints for your local Mac CLI (`ensure`) to pull, extract with local LLM, and post to Sure.
+A lightweight buffer Worker that receives raw bank and card notifications from your phone, stores them in Cloudflare D1 (SQLite), and exposes simple endpoints for your local Mac CLI (see root [README.md](../README.md)) to pull via `ensure --sync-transactions`, extract using `mlx-community/Qwen3-4B-Instruct-2507-4bit`, and post to Sure.
 
 ---
 
@@ -67,13 +67,13 @@ curl -H "Authorization: Bearer <AUTH_TOKEN>" https://<worker>.<subdomain>.worker
 
 ## 3. API Endpoints
 
-### 1. Ingest notification (Phone)
+### 1. Ingest Notification (iOS Shortcut / Phone)
 - **Method:** `POST /` or `POST /ingest`
-- **Body:** Raw text from the banking app's notification.
+- **Body:** JSON `{"text": "..."}` (recommended for Apple Shortcuts) or raw plain text.
 - **Behavior:** Hashes content to deduplicate retries, inserts with `synced = 0`.
 - **Response:** `{"status": "received", "id": "4a2f8b..."}`
 
-### 2. Pull Pending Transactions (Local Mac)
+### 2. Pull Pending Transactions (Local Mac via `ensure --sync-transactions`)
 - **Method:** `GET /pending`
 - **Behavior:** Returns all items where `synced = 0` ordered by oldest first.
 - **Response:**
@@ -87,7 +87,7 @@ curl -H "Authorization: Bearer <AUTH_TOKEN>" https://<worker>.<subdomain>.worker
   ]
   ```
 
-### 3. Acknowledge Sync (Local Mac)
+### 3. Acknowledge Sync (Local Mac via `ensure --sync-transactions`)
 - **Method:** `POST /sync`
 - **Body:**
   ```json
