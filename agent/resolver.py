@@ -42,9 +42,9 @@ def resolve_account_id(account_name: str, account_map: dict) -> str:
 def build_payload(parsed: dict, category_map: dict, account_map: dict) -> dict:
     category_id = resolve_category_id(parsed.get("category", ""), category_map)
     account_id = resolve_account_id(parsed.get("account", ""), account_map)
-    classification = parsed.get("classification", "expense")
-    if classification not in ("income", "expense"):
-        classification = "expense"
+    nature = parsed.get("nature", "expense")
+    if nature not in ("income", "expense"):
+        nature = "expense"
 
     return {
         "transaction": {
@@ -56,7 +56,7 @@ def build_payload(parsed: dict, category_map: dict, account_map: dict) -> dict:
             "notes": parsed.get("notes", ""),
             "currency": parsed.get("currency", "VND"),
             "category_id": category_id,
-            "classification": classification,
+            "nature": nature,
             "merchant_id": None,
             "tag_ids": [],
             "user_modified": True,

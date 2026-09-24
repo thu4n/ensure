@@ -13,7 +13,7 @@ NOTIFICATION_EXTRACTION_SCHEMA = {
     "currency": "string (e.g. VND, USD)",
     "date": "string (YYYY-MM-DD format extracted from the first line or today's date)",
     "category": "string (must match one of the available categories exactly)",
-    "classification": "string ('income' if money added/PS:+, 'expense' if money spent/PS:-)",
+    "nature": "string ('income' if money added/PS:+, 'expense' if money spent/PS:-)",
 }
 
 
@@ -65,7 +65,7 @@ def extract_transaction_details(
                 "- The 'category' field in your JSON output must be ONLY the category name exactly (do not include the example in the category value).\n\n"
                 "Instruction for accounts:\n"
                 "- Choose from the Available accounts list. If the user specifies none, default to Wallet.\n\n"
-                "Instruction for classification:\n"
+                "Instruction for nature:\n"
                 "- Choose 'income' if the input indicates receiving money, salary, bonus, refund, cashback, etc.\n"
                 "- Choose 'expense' for purchases, spending, bills, or fees.\n\n"
                 "Return ONLY valid raw JSON. No explanations, no markdown blocks."
@@ -82,8 +82,8 @@ def extract_transaction_details(
         raise ValueError(f"Failed to extract JSON from model output:\n{raw_output}")
 
     parsed = json.loads(match.group(0))
-    if "classification" not in parsed:
-        parsed["classification"] = "expense"
+    if "nature" not in parsed:
+        parsed["nature"] = "expense"
     return parsed
 
 
@@ -151,10 +151,10 @@ def extract_notification_details(
                 "1. First Line (Account & Date/Time):\n"
                 "   - The prefix (e.g. '(TPBank)') or first line shows what bank/account this is. Map it to the closest matching account in 'Available accounts' (e.g. 'TP Bank ATM').\n"
                 "   - The date/time (e.g. '22/09/26' -> '2026-09-22') is the transaction date. Convert to 'YYYY-MM-DD'. If unparseable, use today's date.\n"
-                "2. Third Line / 'PS:' Line (Actual Amount & Classification):\n"
+                "2. Third Line / 'PS:' Line (Actual Amount & Nature):\n"
                 "   - The 'PS' (Phat Sinh) line shows the actual transaction amount and whether it is income or expense.\n"
-                "   - If 'PS:+' (has plus sign '+'): money was added/received into the account -> 'classification' MUST be 'income'.\n"
-                "   - If 'PS:-' (has minus sign '-'): money was deducted/spent from the account -> 'classification' MUST be 'expense'.\n"
+                "   - If 'PS:+' (has plus sign '+'): money was added/received into the account -> 'nature' MUST be 'income'.\n"
+                "   - If 'PS:-' (has minus sign '-'): money was deducted/spent from the account -> 'nature' MUST be 'expense'.\n"
                 "   - Parse 'amount' as a positive number (e.g. 2000, 5000). Vietnamese notation uses '.' as thousand separators.\n"
                 "3. 'SD' Lines (Current Running Balance - IGNORE FOR AMOUNT):\n"
                 "   - 'SD' (So Du) and 'SD KHA DUNG' lines are the current account balance (e.g. 'SD: 800.778VND').\n"
@@ -182,11 +182,11 @@ def extract_notification_details(
 
     # Deterministic check for PS:+ (income) and PS:- (expense) from banking SMS
     if re.search(r"PS:\s*\+", user_input):
-        parsed["classification"] = "income"
+        parsed["nature"] = "income"
     elif re.search(r"PS:\s*-", user_input):
-        parsed["classification"] = "expense"
-    elif "classification" not in parsed:
-        parsed["classification"] = "expense"
+        parsed["nature"] = "expense"
+    elif "nature" not in parsed:
+        parsed["nature"] = "expense"
 
     return parsed
 
