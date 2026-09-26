@@ -28,14 +28,21 @@ def resolve_category_id(category_name: str, category_map: dict) -> str:
 def resolve_account_id(account_name: str, account_map: dict) -> str:
     if not account_name:
         return DEFAULT_ACCOUNT_ID
+    account_name = account_name.split("(")[0].strip()
+
+    def _extract_id(val):
+        if isinstance(val, dict):
+            return val.get("id") or DEFAULT_ACCOUNT_ID
+        return val or DEFAULT_ACCOUNT_ID
+
     if account_name in account_map:
-        return account_map[account_name]
+        return _extract_id(account_map[account_name])
     lower_map = {k.lower(): v for k, v in account_map.items()}
     if account_name.lower() in lower_map:
-        return lower_map[account_name.lower()]
+        return _extract_id(lower_map[account_name.lower()])
     for k, v in account_map.items():
         if account_name.lower() in k.lower() or k.lower() in account_name.lower():
-            return v
+            return _extract_id(v)
     return DEFAULT_ACCOUNT_ID
 
 

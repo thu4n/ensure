@@ -17,6 +17,57 @@ NOTIFICATION_EXTRACTION_SCHEMA = {
 }
 
 
+def format_available_accounts(account_map: dict) -> str:
+    account_lines = []
+    for name, info in account_map.items():
+        details = []
+        if isinstance(info, dict):
+            if info.get("institution_name"):
+                details.append(f"Institution: {info['institution_name']}")
+            if info.get("account_type"):
+                details.append(f"Type: {info['account_type']}")
+            sub = info.get("subtype") or info.get("sub_type")
+            if sub:
+                details.append(f"Subtype: {sub}")
+
+        if details:
+            account_lines.append(f'- "{name}" ({", ".join(details)})')
+        else:
+            account_lines.append(f'- "{name}"')
+    return "\n".join(account_lines)
+
+
+def format_available_categories(category_map: dict, category_samples: dict = None) -> str:
+    category_samples = category_samples or {}
+    category_lines = []
+    for name in category_map.keys():
+        sample_val = category_samples.get(name)
+        names = []
+        if isinstance(sample_val, list):
+            names = [str(x).strip() for x in sample_val if str(x).strip()]
+        elif isinstance(sample_val, dict):
+            if sample_val.get("name"):
+                names = [sample_val["name"].strip()]
+        elif isinstance(sample_val, str) and sample_val.strip():
+            names = [sample_val.strip()]
+
+        if names:
+            cleaned = []
+            for n in names[:3]:
+                c = " ".join(n.split())
+                if len(c) > 40:
+                    c = c[:37] + "..."
+                cleaned.append(f'"{c}"')
+            if len(cleaned) == 1:
+                category_lines.append(f'- "{name}" (example: {cleaned[0]})')
+            else:
+                category_lines.append(f'- "{name}" (examples: {", ".join(cleaned)})')
+        else:
+            category_lines.append(f'- "{name}"')
+
+    return "\n".join(category_lines)
+
+
 def extract_transaction_details(
     user_input: str,
     category_map: dict,
@@ -29,26 +80,8 @@ def extract_transaction_details(
         model, tokenizer = load(MODEL_ID)
     today = datetime.now().strftime("%Y-%m-%d")
 
-    category_samples = category_samples or {}
-    category_lines = []
-    for name in category_map.keys():
-        sample = category_samples.get(name)
-        sample_name = None
-        if isinstance(sample, dict):
-            sample_name = sample.get("name")
-        elif isinstance(sample, str):
-            sample_name = sample
-
-        if sample_name:
-            clean_sample = " ".join(sample_name.split())
-            if len(clean_sample) > 50:
-                clean_sample = clean_sample[:47] + "..."
-            category_lines.append(f'- "{name}" (example: "{clean_sample}")')
-        else:
-            category_lines.append(f'- "{name}"')
-
-    available_categories = "\n".join(category_lines)
-    available_accounts = ", ".join(f'"{name}"' for name in account_map.keys())
+    available_categories = format_available_categories(category_map, category_samples)
+    available_accounts = format_available_accounts(account_map)
 
     messages = [
         {
@@ -58,13 +91,14 @@ def extract_transaction_details(
                 f"{json.dumps(EXTRACTION_SCHEMA, indent=2)}\n\n"
                 f"Today is {today}. If the user doesn't state a date, use today's date.\n\n"
                 f"Available categories:\n{available_categories}\n\n"
-                f"Available accounts:\n[{available_accounts}]\n\n"
+                f"Available accounts:\n{available_accounts}\n\n"
                 "Instruction for category:\n"
                 "- Choose the single best fitting category from the Available categories list for the 'category' field.\n"
                 "- Use the provided example past transactions to understand each category's context and meaning.\n"
                 "- The 'category' field in your JSON output must be ONLY the category name exactly (do not include the example in the category value).\n\n"
                 "Instruction for accounts:\n"
-                "- Choose from the Available accounts list. If the user specifies none, default to Wallet.\n\n"
+                "- Choose from the Available accounts list using the institution, account type, and subtype for context. If the input mentions 'THE TIN DUNG' or credit card, choose the corresponding account with Type: credit_card. If none specified, default to Wallet.\n"
+                "- The 'account' field in your JSON output must be ONLY the exact account name (do not include the details in parentheses).\n\n"
                 "Instruction for nature:\n"
                 "- Choose 'income' if the input indicates receiving money, salary, bonus, refund, cashback, etc.\n"
                 "- Choose 'expense' for purchases, spending, bills, or fees.\n\n"
@@ -84,6 +118,21 @@ def extract_transaction_details(
     parsed = json.loads(match.group(0))
     if "nature" not in parsed:
         parsed["nature"] = "expense"
+
+    low_input = user_input.lower()
+    if "the tin dung" in low_input or "credit" in low_input:
+        current_acc = parsed.get("account", "")
+        acc_info = account_map.get(current_acc, {})
+        if not (isinstance(acc_info, dict) and acc_info.get("account_type") == "credit_card"):
+            for name, info in account_map.items():
+                if isinstance(info, dict) and info.get("account_type") == "credit_card":
+                    inst = str(info.get("institution_name") or "").lower().strip()
+                    inst_nospace = inst.replace(" ", "")
+                    acc_name_low = name.lower().strip()
+                    if (inst and inst in low_input) or (inst_nospace and inst_nospace in low_input) or (acc_name_low and acc_name_low in low_input):
+                        parsed["account"] = name
+                        break
+
     return parsed
 
 
@@ -104,35 +153,17 @@ def extract_notification_details(
         sample_notification = sample_file.read_text(encoding="utf-8").strip()
     else:
         sample_notification = (
-            "(TPBank): 22/09/26;19:55\n"
-            "TK: xxxx9744901\n"
+            "(BankName): 22/09/26;19:55\n"
+            "TK: xxxx0000000\n"
             "PS:+2.000VND\n"
-            "SD: 800.778VND\n"
-            "SD KHA DUNG: 800.778VND\n"
+            "SD: 800.000VND\n"
+            "SD KHA DUNG: 800.000VND\n"
             "ND: ai do chuyen tien\n"
             "SO GD: 123x"
         )
 
-    category_samples = category_samples or {}
-    category_lines = []
-    for name in category_map.keys():
-        sample = category_samples.get(name)
-        sample_name = None
-        if isinstance(sample, dict):
-            sample_name = sample.get("name")
-        elif isinstance(sample, str):
-            sample_name = sample
-
-        if sample_name:
-            clean_sample = " ".join(sample_name.split())
-            if len(clean_sample) > 50:
-                clean_sample = clean_sample[:47] + "..."
-            category_lines.append(f'- "{name}" (example: "{clean_sample}")')
-        else:
-            category_lines.append(f'- "{name}"')
-
-    available_categories = "\n".join(category_lines)
-    available_accounts = ", ".join(f'"{name}"' for name in account_map.keys())
+    available_categories = format_available_categories(category_map, category_samples)
+    available_accounts = format_available_accounts(account_map)
 
     messages = [
         {
@@ -141,7 +172,7 @@ def extract_notification_details(
                 "You are an expert banking notification parser. Extract transaction details from raw banking notification SMS/messages into a single raw JSON object matching this schema:\n"
                 f"{json.dumps(NOTIFICATION_EXTRACTION_SCHEMA, indent=2)}\n\n"
                 f"Today is {today}.\n\n"
-                f"Available accounts:\n[{available_accounts}]\n\n"
+                f"Available accounts:\n{available_accounts}\n\n"
                 f"Available categories:\n{available_categories}\n\n"
                 "Here is a sample notification structure for reference (from sample_data.txt):\n"
                 "```\n"
@@ -149,7 +180,9 @@ def extract_notification_details(
                 "```\n\n"
                 "How to parse each part of this notification:\n"
                 "1. First Line (Account & Date/Time):\n"
-                "   - The prefix (e.g. '(TPBank)') or first line shows what bank/account this is. Map it to the closest matching account in 'Available accounts' (e.g. 'TP Bank ATM').\n"
+                "   - The prefix (e.g. '(BankName)') or first line shows what bank/institution this is. ALWAYS match the account to the SAME institution in 'Available accounts'.\n"
+                "   - Credit Card Hint: If the notification mentions 'THE TIN DUNG' (Vietnamese for Credit Card) or 'THE', match it to the credit card account (Type: credit_card) belonging to THAT same institution, NOT an ATM checking account and NOT another bank's card.\n"
+                "   - The 'account' field in your JSON output must be ONLY the exact account name (do not include the details in parentheses).\n"
                 "   - The date/time (e.g. '22/09/26' -> '2026-09-22') is the transaction date. Convert to 'YYYY-MM-DD'. If unparseable, use today's date.\n"
                 "2. Third Line / 'PS:' Line (Actual Amount & Nature):\n"
                 "   - The 'PS' (Phat Sinh) line shows the actual transaction amount and whether it is income or expense.\n"
@@ -188,6 +221,28 @@ def extract_notification_details(
     elif "nature" not in parsed:
         parsed["nature"] = "expense"
 
+    # Deterministic check for "THE TIN DUNG" (Credit Card) matching the correct institution dynamically
+    low_input = user_input.lower()
+    is_credit = "the tin dung" in low_input or "credit" in low_input
+    if is_credit:
+        matched_card = None
+        for name, info in account_map.items():
+            if isinstance(info, dict) and info.get("account_type") == "credit_card":
+                inst = str(info.get("institution_name") or "").lower().strip()
+                inst_nospace = inst.replace(" ", "")
+                acc_name_low = name.lower().strip()
+                if (inst and inst in low_input) or (inst_nospace and inst_nospace in low_input) or (acc_name_low and acc_name_low in low_input):
+                    matched_card = name
+                    break
+        if not matched_card:
+            for name, info in account_map.items():
+                if isinstance(info, dict) and info.get("account_type") == "credit_card":
+                    matched_card = name
+                    break
+        if matched_card:
+            parsed["account"] = matched_card
+
     return parsed
+
 
 

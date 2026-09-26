@@ -81,7 +81,7 @@ curl -H "Authorization: Bearer <AUTH_TOKEN>" https://<worker>.<subdomain>.worker
   [
     {
       "id": "4a2f8b...",
-      "raw": "(TPBank): 22/09/26;19:55\nTK: xxxx...",
+      "raw": "(BankName): 22/09/26;19:55\nTK: xxxx...",
       "created_at": "2026-09-23 12:30:00"
     }
   ]

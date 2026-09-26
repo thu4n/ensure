@@ -22,7 +22,13 @@ def fetch_accounts(client: httpx.Client, headers: dict) -> dict:
         response.raise_for_status()
         data = response.json()
         for c in data.get("accounts", []):
-            account_map[c["name"]] = c["id"]
+            account_map[c["name"]] = {
+                "id": c["id"],
+                "institution_name": c.get("institution_name"),
+                "classification": c.get("classification"),
+                "account_type": c.get("account_type"),
+                "subtype": c.get("subtype"),
+            }
 
         pagination = data.get("pagination", {})
         if page >= pagination.get("total_pages", 1):
@@ -48,34 +54,38 @@ def fetch_categories(client: httpx.Client, headers: dict) -> dict:
     return category_map
 
 
-def fetch_category_samples(client: httpx.Client, headers: dict, category_map: dict) -> dict:
+def fetch_category_samples(
+    client: httpx.Client, headers: dict, category_map: dict, max_samples: int = 3
+) -> dict:
     samples = {}
     for cat_name, cat_id in category_map.items():
         try:
             response = client.get(
                 "transactions",
-                params={"category_id": cat_id, "per_page": 1},
+                params={"category_id": cat_id, "per_page": 10},
                 headers=headers,
                 timeout=10,
             )
             if response.status_code == 200:
                 txs = response.json().get("transactions", [])
-                if txs:
-                    tx = txs[0]
-                    samples[cat_name] = {
-                        "name": tx.get("name", ""),
-                        "notes": tx.get("notes", "") or "",
-                    }
-                else:
-                    samples[cat_name] = None
+                distinct_names = []
+                seen_lower = set()
+                for tx in txs:
+                    name = (tx.get("name") or "").strip()
+                    if name and name.lower() not in seen_lower:
+                        seen_lower.add(name.lower())
+                        distinct_names.append(name)
+                        if len(distinct_names) >= max_samples:
+                            break
+                samples[cat_name] = distinct_names
             else:
-                samples[cat_name] = None
+                samples[cat_name] = []
         except Exception as e:
             print(
-                f"Warning: Failed to fetch sample transaction for category '{cat_name}': {e}",
+                f"Warning: Failed to fetch sample transactions for category '{cat_name}': {e}",
                 file=sys.stderr,
             )
-            samples[cat_name] = None
+            samples[cat_name] = []
     return samples
 
 
