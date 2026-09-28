@@ -36,8 +36,6 @@ pnpm wrangler d1 execute ensure-db --local --file=./schema.sql
 pnpm wrangler d1 execute ensure-db --remote --file=./schema.sql
 ```
 
-*(Note: The Worker also auto-initializes the table via `CREATE TABLE IF NOT EXISTS` if not already created).*
-
 ---
 
 ## 2. Authentication (API Secret Token)

@@ -26,19 +26,6 @@ class Default(WorkerEntrypoint):
                 return Response.json({"error": "Unauthorized"}, status=401)
 
         try:
-            # Auto-initialize table if it doesn't exist
-            await self.env.DB.prepare(
-                """
-                CREATE TABLE IF NOT EXISTS transactions (
-                    id TEXT PRIMARY KEY,
-                    raw TEXT NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    synced INTEGER DEFAULT 0,
-                    synced_at DATETIME
-                )
-                """
-            ).run()
-
             # 2. Ingest raw notification: POST / or POST /ingest
             if method == "POST" and path in ("/", "/ingest"):
                 content_type = request.headers.get("content-type", "").lower()
@@ -95,6 +82,7 @@ class Default(WorkerEntrypoint):
                 if not ids:
                     return Response.json({"error": "No IDs provided"}, status=400)
 
+                # TODO: Batch execute statements via self.env.DB.batch([...]) or WHERE id IN (...)
                 for msg_id in ids:
                     stmt = self.env.DB.prepare(
                         "UPDATE transactions SET synced = 1, synced_at = CURRENT_TIMESTAMP WHERE id = ?"
