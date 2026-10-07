@@ -68,17 +68,35 @@ def format_available_categories(category_map: dict, category_samples: dict = Non
     return "\n".join(category_lines)
 
 
+def _parse_timestamp(timestamp: str | datetime | None = None) -> tuple[str, str]:
+    if timestamp is None:
+        now = datetime.now()
+        return now.strftime("%Y-%m-%d"), now.strftime("%H:%M")
+    if isinstance(timestamp, datetime):
+        return timestamp.strftime("%Y-%m-%d"), timestamp.strftime("%H:%M")
+    ts_str = str(timestamp).strip().replace("T", " ").replace("Z", "")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(ts_str.split(".")[0], fmt)
+            return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M")
+        except ValueError:
+            continue
+    now = datetime.now()
+    return now.strftime("%Y-%m-%d"), now.strftime("%H:%M")
+
+
 def extract_transaction_details(
     user_input: str,
     category_map: dict,
     account_map: dict,
     category_samples: dict = None,
+    timestamp: str | datetime = None,
     model=None,
     tokenizer=None,
 ) -> dict:
     if model is None or tokenizer is None:
         model, tokenizer = load(MODEL_ID)
-    today = datetime.now().strftime("%Y-%m-%d")
+    today, current_time = _parse_timestamp(timestamp)
 
     available_categories = format_available_categories(category_map, category_samples)
     available_accounts = format_available_accounts(account_map)
@@ -89,12 +107,19 @@ def extract_transaction_details(
             "content": (
                 "You are a finance parsing assistant. Extract transaction details from user input into a single raw JSON object matching this schema:\n"
                 f"{json.dumps(EXTRACTION_SCHEMA, indent=2)}\n\n"
-                f"Today is {today}. If the user doesn't state a date, use today's date.\n\n"
+                f"Today is {today}, and current time is {current_time}.\n"
+                "If the user doesn't state a date or time in the input, use today's date and the current time.\n\n"
                 f"Available categories:\n{available_categories}\n\n"
                 f"Available accounts:\n{available_accounts}\n\n"
                 "Instruction for category:\n"
                 "- Choose the single best fitting category from the Available categories list for the 'category' field.\n"
                 "- Use the provided example past transactions to understand each category's context and meaning.\n"
+                "- Use the transaction timestamp / time of day to better categorize meals and spending:\n"
+                "  * Morning (~06:00 - 10:30): Food/meals are typically breakfast ('Main Meals' or 'Food - Drinks'); morning coffee/tea is 'Drinks'.\n"
+                "  * Midday / Lunch (~11:00 - 13:30): Food/meal purchases (e.g. rice, noodles, banh mi, lunch sets) are most likely lunch ('Main Meals', 'Food - Drinks', or 'Restaurant').\n"
+                "  * Afternoon (~14:00 - 17:00): Beverages are typically coffee/tea ('Drinks') and snacks are 'Fruit & Snacks'.\n"
+                "  * Evening / Dinner (~17:30 - 21:30): Food/dining purchases are typically dinner ('Main Meals', 'Restaurant', or 'Food - Drinks').\n"
+                "  * Late night (~21:30 - 04:00): Late food, drinks, entertainment, or rides.\n"
                 "- The 'category' field in your JSON output must be ONLY the category name exactly (do not include the example in the category value).\n\n"
                 "Instruction for accounts:\n"
                 "- Choose from the Available accounts list using the institution, account type, and subtype for context. If the input mentions 'THE TIN DUNG' or credit card, choose the corresponding account with Type: credit_card. If none specified, default to Wallet.\n"
@@ -141,12 +166,13 @@ def extract_notification_details(
     category_map: dict,
     account_map: dict,
     category_samples: dict = None,
+    timestamp: str | datetime = None,
     model=None,
     tokenizer=None,
 ) -> dict:
     if model is None or tokenizer is None:
         model, tokenizer = load(MODEL_ID)
-    today = datetime.now().strftime("%Y-%m-%d")
+    today, current_time = _parse_timestamp(timestamp)
 
     sample_file = BASE_DIR / "cloudflare" / "sample_data.txt"
     if sample_file.exists():
@@ -171,7 +197,7 @@ def extract_notification_details(
             "content": (
                 "You are an expert banking notification parser. Extract transaction details from raw banking notification SMS/messages into a single raw JSON object matching this schema:\n"
                 f"{json.dumps(NOTIFICATION_EXTRACTION_SCHEMA, indent=2)}\n\n"
-                f"Today is {today}.\n\n"
+                f"Today is {today}, and reference time is {current_time}.\n\n"
                 f"Available accounts:\n{available_accounts}\n\n"
                 f"Available categories:\n{available_categories}\n\n"
                 "Here is a sample notification structure for reference (from sample_data.txt):\n"
@@ -183,7 +209,7 @@ def extract_notification_details(
                 "   - The prefix (e.g. '(BankName)') or first line shows what bank/institution this is. ALWAYS match the account to the SAME institution in 'Available accounts'.\n"
                 "   - Credit Card Hint: If the notification mentions 'THE TIN DUNG' (Vietnamese for Credit Card) or 'THE', match it to the credit card account (Type: credit_card) belonging to THAT same institution, NOT an ATM checking account and NOT another bank's card.\n"
                 "   - The 'account' field in your JSON output must be ONLY the exact account name (do not include the details in parentheses).\n"
-                "   - The date/time (e.g. '22/09/26' -> '2026-09-22') is the transaction date. Convert to 'YYYY-MM-DD'. If unparseable, use today's date.\n"
+                "   - The date/time (e.g. '22/09/26;19:55' -> date '2026-09-22', time '19:55') gives the transaction timestamp. Convert the date to 'YYYY-MM-DD'. If unparseable, use today's date ({today}).\n"
                 "2. Third Line / 'PS:' Line (Actual Amount & Nature):\n"
                 "   - The 'PS' (Phat Sinh) line shows the actual transaction amount and whether it is income or expense.\n"
                 "   - If 'PS:+' (has plus sign '+'): money was added/received into the account -> 'nature' MUST be 'income'.\n"
@@ -197,7 +223,12 @@ def extract_notification_details(
                 "   - Use the 'ND' content as the transaction 'name' (e.g. 'ai do chuyen tien').\n"
                 "   - Combine 'ND' and 'SO GD' into the 'description' (e.g. 'ai do chuyen tien | SO GD: 123x').\n"
                 "5. Category Selection:\n"
-                "   - Pick the single best fitting category from 'Available categories' using the ND text and sample past transactions for context.\n\n"
+                "   - Pick the single best fitting category from 'Available categories' using the ND text, sample past transactions, AND the notification timestamp / time of day for context:\n"
+                "     * Morning (~06:00 - 10:30): Food transactions are typically breakfast ('Main Meals' or 'Food - Drinks'); morning coffee/tea is 'Drinks'.\n"
+                "     * Midday / Lunch (~11:00 - 13:30): Food/dining transactions during this window are most likely lunch ('Main Meals', 'Food - Drinks', or 'Restaurant').\n"
+                "     * Afternoon (~14:00 - 17:00): Beverages are typically coffee/tea ('Drinks') and snacks are 'Fruit & Snacks'.\n"
+                "     * Evening / Dinner (~17:30 - 21:30): Dining/food transactions are typically dinner ('Main Meals', 'Restaurant', or 'Food - Drinks').\n"
+                "     * Late night (~21:30 - 04:00): Late food, drinks, entertainment, or ride-hailing.\n\n"
                 "Return ONLY valid raw JSON. No explanations, no markdown blocks."
             ),
         },

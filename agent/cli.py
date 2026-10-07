@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import sys
 from mlx_lm import load
@@ -58,7 +59,7 @@ def main():
 
     category_map, account_map, category_samples = load_data()
 
-    items_to_process: list[tuple[str, str | None]] = []
+    items_to_process: list[tuple[str, str | None, str | None]] = []
 
     if sync_flag:
         print(f"Connecting to Cloudflare Worker ({CLOUDFLARE_WORKER_URL or 'not configured'})...")
@@ -68,17 +69,18 @@ def main():
             for item in pending:
                 raw_text = (item.get("raw") or "").strip()
                 if raw_text:
-                    items_to_process.append((raw_text, item.get("id")))
+                    items_to_process.append((raw_text, item.get("id"), item.get("created_at")))
         except Exception as e:
             print(f"Error fetching from Cloudflare Worker: {e}", file=sys.stderr)
             sys.exit(1)
 
     raw_input = " ".join(filtered_args).strip()
     if raw_input:
+        now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for item in raw_input.split(";"):
             tx = item.strip()
             if tx:
-                items_to_process.append((tx, None))
+                items_to_process.append((tx, None, now_ts))
 
     if not items_to_process:
         if sync_flag:
@@ -92,7 +94,7 @@ def main():
     model, tokenizer = load(MODEL_ID)
     success_count = 0
 
-    for idx, (raw_text, cf_id) in enumerate(items_to_process, start=1):
+    for idx, (raw_text, cf_id, tx_timestamp) in enumerate(items_to_process, start=1):
         prefix = f"[{idx}/{total}] " if total > 1 else ""
         print(f'\n{prefix}Parsing: "{raw_text}"...')
 
@@ -103,6 +105,7 @@ def main():
                     category_map,
                     account_map,
                     category_samples,
+                    timestamp=tx_timestamp,
                     model=model,
                     tokenizer=tokenizer,
                 )
@@ -112,6 +115,7 @@ def main():
                     category_map,
                     account_map,
                     category_samples,
+                    timestamp=tx_timestamp,
                     model=model,
                     tokenizer=tokenizer,
                 )

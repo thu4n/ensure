@@ -16,7 +16,7 @@ from agent.resolver import build_payload
 DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
-def test_item(raw_text: str, label: str, category_map: dict, account_map: dict, category_samples: dict, model, tokenizer):
+def test_item(raw_text: str, label: str, category_map: dict, account_map: dict, category_samples: dict, model, tokenizer, timestamp: str = None):
     print(f"\n{'=' * 20} Testing: {label} {'=' * 20}")
     print("--- Raw Input ---")
     print(raw_text)
@@ -29,6 +29,7 @@ def test_item(raw_text: str, label: str, category_map: dict, account_map: dict, 
             category_map,
             account_map,
             category_samples,
+            timestamp=timestamp,
             model=model,
             tokenizer=tokenizer,
         )
@@ -38,6 +39,7 @@ def test_item(raw_text: str, label: str, category_map: dict, account_map: dict, 
             category_map,
             account_map,
             category_samples,
+            timestamp=timestamp,
             model=model,
             tokenizer=tokenizer,
         )
