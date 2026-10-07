@@ -1,0 +1,2 @@
+# Authentication token for Cloudflare Worker ingestion buffer
+AUTH_TOKEN="your_worker_auth_token"

@@ -4,8 +4,9 @@ from agent.config import DEFAULT_ACCOUNT_ID, DEFAULT_CATEGORY_ID
 
 
 def resolve_category_id(category_name: str, category_map: dict) -> str:
+    fallback = DEFAULT_CATEGORY_ID or (next(iter(category_map.values()), "") if category_map else "")
     if not category_name:
-        return DEFAULT_CATEGORY_ID
+        return fallback
     # 1. Exact match
     if category_name in category_map:
         return category_map[category_name]
@@ -22,18 +23,23 @@ def resolve_category_id(category_name: str, category_map: dict) -> str:
     for k, v in category_map.items():
         if category_name.lower() in k.lower() or k.lower() in category_name.lower():
             return v
-    return DEFAULT_CATEGORY_ID
+    return fallback
 
 
 def resolve_account_id(account_name: str, account_map: dict) -> str:
+    fallback = DEFAULT_ACCOUNT_ID or ""
+    if not fallback and account_map:
+        first_val = next(iter(account_map.values()))
+        fallback = first_val.get("id", "") if isinstance(first_val, dict) else (first_val or "")
+
     if not account_name:
-        return DEFAULT_ACCOUNT_ID
+        return fallback
     account_name = account_name.split("(")[0].strip()
 
     def _extract_id(val):
         if isinstance(val, dict):
-            return val.get("id") or DEFAULT_ACCOUNT_ID
-        return val or DEFAULT_ACCOUNT_ID
+            return val.get("id") or fallback
+        return val or fallback
 
     if account_name in account_map:
         return _extract_id(account_map[account_name])
@@ -43,7 +49,7 @@ def resolve_account_id(account_name: str, account_map: dict) -> str:
     for k, v in account_map.items():
         if account_name.lower() in k.lower() or k.lower() in account_name.lower():
             return _extract_id(v)
-    return DEFAULT_ACCOUNT_ID
+    return fallback
 
 
 def build_payload(parsed: dict, category_map: dict, account_map: dict) -> dict:

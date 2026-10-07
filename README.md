@@ -58,7 +58,7 @@ CLOUDFLARE_AUTH_TOKEN="your_worker_auth_token"
 To run `ensure` from any directory in your terminal, add an alias to `~/.zshrc`:
 
 ```bash
-alias ensure="uv run --directory /Users/thu4n/repos/ensure python main.py"
+alias ensure="uv run --directory /path/to/ensure python main.py"
 ```
 
 Reload your shell:

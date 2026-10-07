@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import json
 from urllib.parse import parse_qs, urlparse
 from workers import Response, WorkerEntrypoint
@@ -22,7 +23,7 @@ class Default(WorkerEntrypoint):
                 query = parse_qs(parsed_url.query)
                 token = query.get("token", [None])[0] or query.get("key", [None])[0]
 
-            if token != expected_token:
+            if not token or not hmac.compare_digest(str(token), str(expected_token)):
                 return Response.json({"error": "Unauthorized"}, status=401)
 
         try:

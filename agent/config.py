@@ -13,11 +13,11 @@ CATEGORIES_CACHE_FILE = DATA_DIR / "categories.json"
 CATEGORY_SAMPLES_CACHE_FILE = DATA_DIR / "category_samples.json"
 
 # API & Model Configuration
-SURE_API_URL = os.getenv("SURE_API_URL", "http://sure-web.self-host.orb.local/api/v1/")
+SURE_API_URL = os.getenv("SURE_API_URL", "http://localhost:3000/api/v1/")
 SURE_API_KEY = os.getenv("SURE_API_KEY", "")
 MODEL_ID = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
-DEFAULT_ACCOUNT_ID = os.getenv("DEFAULT_ACCOUNT_ID", "81cb8465-1cad-47d5-8061-b8e4baa954db")  # Wallet
-DEFAULT_CATEGORY_ID = "adaac5f4-5de7-4d2b-b3d9-45079ebf6208"  # Main meal
+DEFAULT_ACCOUNT_ID = os.getenv("DEFAULT_ACCOUNT_ID", "")
+DEFAULT_CATEGORY_ID = os.getenv("DEFAULT_CATEGORY_ID", "")
 
 # Cloudflare Worker Configuration
 CLOUDFLARE_WORKER_URL = os.getenv("CLOUDFLARE_WORKER_URL", "").rstrip("/")
