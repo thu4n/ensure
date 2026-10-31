@@ -28,6 +28,9 @@ def fetch_accounts(client: httpx.Client, headers: dict) -> dict:
                 "classification": c.get("classification"),
                 "account_type": c.get("account_type"),
                 "subtype": c.get("subtype"),
+                "balance": c.get("balance"),
+                "balance_cents": c.get("balance_cents"),
+                "currency": c.get("currency"),
             }
 
         pagination = data.get("pagination", {})
@@ -188,4 +191,21 @@ def mark_transactions_synced(ids: list[str]) -> dict:
         )
         response.raise_for_status()
         return response.json()
+
+
+def update_cached_account_balance(account_name: str, new_balance_cents: int = None, delta_cents: int = None):
+    if not ACCOUNTS_CACHE_FILE.exists():
+        return
+    try:
+        accounts = json.loads(ACCOUNTS_CACHE_FILE.read_text(encoding="utf-8"))
+        if account_name in accounts and isinstance(accounts[account_name], dict):
+            curr = accounts[account_name].get("balance_cents")
+            if new_balance_cents is not None:
+                accounts[account_name]["balance_cents"] = new_balance_cents
+            elif delta_cents is not None and curr is not None:
+                accounts[account_name]["balance_cents"] = curr + delta_cents
+            ACCOUNTS_CACHE_FILE.write_text(json.dumps(accounts, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"Warning: Failed to update local account balance cache: {e}", file=sys.stderr)
+
 

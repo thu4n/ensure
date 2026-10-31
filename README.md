@@ -23,6 +23,8 @@ A fast, lightweight CLI tool to parse natural language expense/income descriptio
 - **Remote Ingestion Sync (`--sync-transactions`)**: Pulls un-synced banking notifications from Cloudflare D1, parses them with a specialized prompt teaching the model bank SMS structure, and marks them synced upon successful upload to Sure.
 - **Income & Expense Detection (`nature`)**: Detects transaction nature (`income` vs `expense`) from both banking notifications (e.g. `PS:+` vs `PS:-`) and natural language phrases (salary, freelance, purchases).
 - **Contextual Category Mapping & History Cache (`--cache-history`)**: Caches categories, accounts, and historical sample transactions locally in `.data/` to enrich LLM judgment without repeating API queries.
+- **Balance-Aware Account Matching**: Caches account balances and leverages running balance indicators (`SD: ...`) in bank SMS to accurately disambiguate between accounts from the same bank (e.g. primary ATM checking vs. emergency/savings funds).
+- **Deterministic Amount & Regex Guards**: Protects against LLM floating-point truncation on currency amounts formatted with dots or commas (e.g. `64.120 VND` is reliably extracted as `64120`, preventing truncation to `64`).
 - **Package-free UV App**: Managed via `pyproject.toml` with fast virtual environments via `uv`.
 
 ---

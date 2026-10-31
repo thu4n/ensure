@@ -9,6 +9,7 @@ from agent.api import (
     load_data,
     mark_transactions_synced,
     post_transaction,
+    update_cached_account_balance,
 )
 from agent.config import CLOUDFLARE_WORKER_URL, MODEL_ID
 from agent.extractor import (
@@ -127,6 +128,14 @@ def main():
 
             res = post_transaction(payload)
             print(f"\nResponse: {res}")
+
+            acc_name = parsed.get("account")
+            if acc_name:
+                if "running_balance" in parsed:
+                    update_cached_account_balance(acc_name, new_balance_cents=parsed["running_balance"])
+                elif parsed.get("amount"):
+                    delta = parsed["amount"] if parsed.get("nature") == "income" else -parsed["amount"]
+                    update_cached_account_balance(acc_name, delta_cents=delta)
 
             if cf_id:
                 mark_transactions_synced([cf_id])

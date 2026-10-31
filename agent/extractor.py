@@ -29,6 +29,8 @@ def format_available_accounts(account_map: dict) -> str:
             sub = info.get("subtype") or info.get("sub_type")
             if sub:
                 details.append(f"Subtype: {sub}")
+            if info.get("balance"):
+                details.append(f"Balance: ~{info['balance']}")
 
         if details:
             account_lines.append(f'- "{name}" ({", ".join(details)})')
@@ -85,6 +87,15 @@ def _parse_timestamp(timestamp: str | datetime | None = None) -> tuple[str, str]
     return now.strftime("%Y-%m-%d"), now.strftime("%H:%M")
 
 
+def _correct_truncated_amount(amount: int | float | None, raw_text: str) -> int | float | None:
+    if amount is not None and amount < 1000:
+        # Check if the text has something like 64.120 or 64,120 where 64 was extracted
+        match = re.search(rf"\b({int(amount)})[\.,](\d{{3}})\b", raw_text)
+        if match:
+            return int(match.group(1) + match.group(2))
+    return int(amount) if amount is not None else amount
+
+
 def extract_transaction_details(
     user_input: str,
     category_map: dict,
@@ -122,8 +133,13 @@ def extract_transaction_details(
                 "  * Late night (~21:30 - 04:00): Late food, drinks, entertainment, or rides.\n"
                 "- The 'category' field in your JSON output must be ONLY the category name exactly (do not include the example in the category value).\n\n"
                 "Instruction for accounts:\n"
-                "- Choose from the Available accounts list using the institution, account type, and subtype for context. If the input mentions 'THE TIN DUNG' or credit card, choose the corresponding account with Type: credit_card. If none specified, default to Wallet.\n"
+                "- Choose from the Available accounts list using the institution, account type, and subtype for context.\n"
+                "- If the input mentions 'THE TIN DUNG' or credit card, choose the corresponding account with Type: credit_card.\n"
+                "- For bank transactions/transfers (e.g. TP Bank), use the primary checking / ATM account (Subtype: checking, e.g. 'Main ATM'). Do NOT choose savings or emergency funds (e.g. 'Emergency Fund') unless explicitly specified.\n"
+                "- If none specified, default to Wallet.\n"
                 "- The 'account' field in your JSON output must be ONLY the exact account name (do not include the details in parentheses).\n\n"
+                "Instruction for amount:\n"
+                "- Parse 'amount' as positive numeric value: convert 45k -> 45000, and treat dots/commas as thousand separators in VND (e.g. '64.120' or '64,120' -> 64120, not 64).\n\n"
                 "Instruction for nature:\n"
                 "- Choose 'income' if the input indicates receiving money, salary, bonus, refund, cashback, etc.\n"
                 "- Choose 'expense' for purchases, spending, bills, or fees.\n\n"
@@ -141,6 +157,7 @@ def extract_transaction_details(
         raise ValueError(f"Failed to extract JSON from model output:\n{raw_output}")
 
     parsed = json.loads(match.group(0))
+    parsed["amount"] = _correct_truncated_amount(parsed.get("amount"), user_input)
     if "nature" not in parsed:
         parsed["nature"] = "expense"
 
@@ -207,17 +224,19 @@ def extract_notification_details(
                 "How to parse each part of this notification:\n"
                 "1. First Line (Account & Date/Time):\n"
                 "   - The prefix (e.g. '(BankName)') or first line shows what bank/institution this is. ALWAYS match the account to the SAME institution in 'Available accounts'.\n"
-                "   - Credit Card Hint: If the notification mentions 'THE TIN DUNG' (Vietnamese for Credit Card) or 'THE', match it to the credit card account (Type: credit_card) belonging to THAT same institution, NOT an ATM checking account and NOT another bank's card.\n"
+                "   - Account type and Balance Hint:\n"
+                "     * If the notification mentions 'THE TIN DUNG' (Vietnamese for Credit Card) or 'THE', match it to the credit card account (Type: credit_card) belonging to THAT same institution, NOT an ATM checking account and NOT another bank's card.\n"
+                "     * For standard bank notifications (e.g. with 'TK: ...'), use the running balance ('SD:' or 'SD KHA DUNG:') to match the account with the closest Balance (e.g. checking/ATM account vs dedicated savings/emergency fund).\n"
                 "   - The 'account' field in your JSON output must be ONLY the exact account name (do not include the details in parentheses).\n"
                 "   - The date/time (e.g. '22/09/26;19:55' -> date '2026-09-22', time '19:55') gives the transaction timestamp. Convert the date to 'YYYY-MM-DD'. If unparseable, use today's date ({today}).\n"
                 "2. Third Line / 'PS:' Line (Actual Amount & Nature):\n"
                 "   - The 'PS' (Phat Sinh) line shows the actual transaction amount and whether it is income or expense.\n"
                 "   - If 'PS:+' (has plus sign '+'): money was added/received into the account -> 'nature' MUST be 'income'.\n"
                 "   - If 'PS:-' (has minus sign '-'): money was deducted/spent from the account -> 'nature' MUST be 'expense'.\n"
-                "   - Parse 'amount' as a positive number (e.g. 2000, 5000). Vietnamese notation uses '.' as thousand separators.\n"
-                "3. 'SD' Lines (Current Running Balance - IGNORE FOR AMOUNT):\n"
+                "   - Parse 'amount' as a positive number (e.g. 2000, 64120). In Vietnamese notation, dots '.' and commas ',' are thousand separators (e.g. '64.120' is 64120, not 64; '2.000' is 2000, not 2).\n"
+                "3. 'SD' Lines (Current Running Balance - USE FOR ACCOUNT MATCHING, NOT TRANSACTION AMOUNT):\n"
                 "   - 'SD' (So Du) and 'SD KHA DUNG' lines are the current account balance (e.g. 'SD: 800.778VND').\n"
-                "   - IGNORE these lines for now! They represent running balance, NOT the transaction amount. Do NOT use this value as the transaction amount. (Note: This will be used in the future to prevent balance mismatch).\n"
+                "   - Do NOT use this value as the transaction amount! Use it to match which account the transaction belongs to by comparing against account balances.\n"
                 "4. 'ND' & 'SO GD' Lines (Metadata for Name and Description):\n"
                 "   - 'ND' (Noi Dung / content) and 'SO GD' (So Giao Dich / transaction ref) are metadata and very good info to have in the name of the transaction and the description.\n"
                 "   - Use the 'ND' content as the transaction 'name' (e.g. 'ai do chuyen tien').\n"
@@ -243,6 +262,17 @@ def extract_notification_details(
         raise ValueError(f"Failed to extract JSON from model output:\n{raw_output}")
 
     parsed = json.loads(match.group(0))
+
+    # Deterministic amount extraction from PS line for banking SMS
+    ps_match = re.search(r"PS:\s*[\+\-]?\s*([0-9\.,]+)", user_input, re.IGNORECASE)
+    if ps_match:
+        digits = re.sub(r"[^\d]", "", ps_match.group(1).strip())
+        if digits:
+            try:
+                parsed["amount"] = int(digits)
+            except ValueError:
+                pass
+    parsed["amount"] = _correct_truncated_amount(parsed.get("amount"), user_input)
 
     # Deterministic check for PS:+ (income) and PS:- (expense) from banking SMS
     if re.search(r"PS:\s*\+", user_input):
@@ -272,6 +302,41 @@ def extract_notification_details(
                     break
         if matched_card:
             parsed["account"] = matched_card
+    else:
+        # Balance-based disambiguation using running balance 'SD'
+        sd_match = re.search(r"SD(?:\s+KHA\s+DUNG)?:\s*([0-9\.,]+)", user_input, re.IGNORECASE)
+        if sd_match:
+            digits = re.sub(r"[^\d]", "", sd_match.group(1).strip())
+            if digits:
+                sd_val = int(digits)
+                parsed["running_balance"] = sd_val
+
+                # Find matching institution from the notification text
+                matched_inst = None
+                for name, info in account_map.items():
+                    if isinstance(info, dict) and info.get("institution_name"):
+                        inst = info["institution_name"].lower()
+                        inst_nospace = inst.replace(" ", "")
+                        if inst in low_input or inst_nospace in low_input:
+                            matched_inst = info["institution_name"]
+                            break
+
+                candidates = []
+                for name, info in account_map.items():
+                    if isinstance(info, dict):
+                        if matched_inst and info.get("institution_name") != matched_inst:
+                            continue
+                        if info.get("account_type") == "credit_card":
+                            continue
+                        if info.get("balance_cents") is not None:
+                            candidates.append((name, info["balance_cents"]))
+
+                if candidates:
+                    closest_name, _ = min(
+                        candidates,
+                        key=lambda c: abs(c[1] - sd_val)
+                    )
+                    parsed["account"] = closest_name
 
     return parsed
 
