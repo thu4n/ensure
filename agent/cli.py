@@ -5,6 +5,7 @@ from mlx_lm import load
 
 from agent.api import (
     cache_history,
+    fetch_account_detail,
     fetch_pending_transactions,
     load_data,
     mark_transactions_synced,
@@ -16,7 +17,7 @@ from agent.extractor import (
     extract_notification_details,
     extract_transaction_details,
 )
-from agent.resolver import build_payload
+from agent.resolver import build_payload, resolve_account_id
 
 
 def print_usage():
@@ -94,6 +95,7 @@ def main():
     print(f"\nProcessing {total} transaction(s). Loading local LLM ({MODEL_ID})...")
     model, tokenizer = load(MODEL_ID)
     success_count = 0
+    mismatches: list[dict] = []
 
     for idx, (raw_text, cf_id, tx_timestamp) in enumerate(items_to_process, start=1):
         prefix = f"[{idx}/{total}] " if total > 1 else ""
@@ -121,6 +123,69 @@ def main():
                     tokenizer=tokenizer,
                 )
             print(f"Parsed by LLM:\n{json.dumps(parsed, indent=2)}")
+
+            acc_name = parsed.get("account")
+            acc_id = resolve_account_id(acc_name, account_map) if acc_name else None
+            acc_info = account_map.get(acc_name) if acc_name else None
+            if not acc_info and acc_id:
+                for k, v in account_map.items():
+                    if isinstance(v, dict) and v.get("id") == acc_id:
+                        acc_info = v
+                        acc_name = k
+                        break
+
+            # Verify running balance if present (depository / checking / savings accounts only)
+            is_credit = acc_info and acc_info.get("account_type") == "credit_card"
+            if "running_balance" in parsed and acc_name and not is_credit:
+                bank_balance = parsed["running_balance"]
+                curr_balance = None
+
+                # Fetch live balance from Sure for maximum accuracy
+                if acc_id:
+                    try:
+                        live_acc = fetch_account_detail(acc_id)
+                        curr_balance = live_acc.get("balance_cents")
+                    except Exception as e:
+                        print(f"Notice: Live balance lookup skipped ({e}). Using cached balance.", file=sys.stderr)
+
+                if curr_balance is None and acc_info:
+                    curr_balance = acc_info.get("balance_cents")
+
+                if curr_balance is not None:
+                    tx_amount = parsed.get("amount", 0)
+                    tx_nature = parsed.get("nature", "expense")
+                    delta = tx_amount if tx_nature == "income" else -tx_amount
+                    expected_balance = curr_balance + delta
+                    discrepancy = bank_balance - expected_balance
+
+                    curr_code = parsed.get("currency") or (acc_info.get("currency") if acc_info else "VND") or "VND"
+
+                    if discrepancy != 0:
+                        mismatch_msg = (
+                            f"[⚠️ Balance Mismatch: Bank reported {bank_balance:,} {curr_code}, "
+                            f"Sure expected {expected_balance:,} {curr_code} (diff: {discrepancy:+,} {curr_code})]"
+                        )
+                        existing_notes = parsed.get("notes") or ""
+                        parsed["notes"] = f"{existing_notes}\n{mismatch_msg}".strip() if existing_notes else mismatch_msg
+
+                        print(
+                            f"\n⚠️  BALANCE MISMATCH for '{acc_name}':\n"
+                            f"   Bank reported (SD): {bank_balance:,} {curr_code}\n"
+                            f"   Sure expected:      {expected_balance:,} {curr_code}\n"
+                            f"   Discrepancy:        {discrepancy:+,} {curr_code}\n"
+                            f"   → Attached note to transaction in Sure for investigation."
+                        )
+                        mismatches.append({
+                            "account": acc_name,
+                            "bank": bank_balance,
+                            "expected": expected_balance,
+                            "diff": discrepancy,
+                            "currency": curr_code,
+                            "tx_name": parsed.get("name") or raw_text[:30],
+                        })
+                    else:
+                        print(f"✓ Balance verified: {bank_balance:,} {curr_code} matches Sure ledger.")
+
             payload = build_payload(parsed, category_map, account_map)
 
             print("\nGenerated API Payload:")
@@ -129,13 +194,16 @@ def main():
             res = post_transaction(payload)
             print(f"\nResponse: {res}")
 
-            acc_name = parsed.get("account")
             if acc_name:
                 if "running_balance" in parsed:
                     update_cached_account_balance(acc_name, new_balance_cents=parsed["running_balance"])
+                    if acc_info:
+                        acc_info["balance_cents"] = parsed["running_balance"]
                 elif parsed.get("amount"):
                     delta = parsed["amount"] if parsed.get("nature") == "income" else -parsed["amount"]
                     update_cached_account_balance(acc_name, delta_cents=delta)
+                    if acc_info and acc_info.get("balance_cents") is not None:
+                        acc_info["balance_cents"] += delta
 
             if cf_id:
                 mark_transactions_synced([cf_id])
@@ -147,8 +215,20 @@ def main():
 
     if total > 1 or sync_flag:
         print(f"\nCompleted: {success_count}/{total} transactions processed successfully.")
-        if success_count < total:
-            sys.exit(1)
+
+    if mismatches:
+        print("\n" + "=" * 65)
+        print("⚠️  BALANCE MISMATCH SUMMARY (Requires Investigation):")
+        for m in mismatches:
+            print(
+                f"  • {m['account']} (\"{m['tx_name']}\"): "
+                f"Bank reported {m['bank']:,} {m['currency']} vs Sure expected {m['expected']:,} {m['currency']} "
+                f"(diff: {m['diff']:+,} {m['currency']})"
+            )
+        print("=" * 65)
+
+    if (total > 1 or sync_flag) and success_count < total:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

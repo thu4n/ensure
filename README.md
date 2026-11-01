@@ -24,6 +24,7 @@ A fast, lightweight CLI tool to parse natural language expense/income descriptio
 - **Income & Expense Detection (`nature`)**: Detects transaction nature (`income` vs `expense`) from both banking notifications (e.g. `PS:+` vs `PS:-`) and natural language phrases (salary, freelance, purchases).
 - **Contextual Category Mapping & History Cache (`--cache-history`)**: Caches categories, accounts, and historical sample transactions locally in `.data/` to enrich LLM judgment without repeating API queries.
 - **Balance-Aware Account Matching**: Caches account balances and leverages running balance indicators (`SD: ...`) in bank SMS to accurately disambiguate between accounts from the same bank (e.g. primary ATM checking vs. emergency/savings funds).
+- **Balance Mismatch Detection & Annotation**: Compares the bank's reported running balance with Sure's ledger balance post-transaction. If a discrepancy exists, it annotates the transaction's notes in Sure and alerts the user in the CLI summary for immediate investigation without mutating historical balances.
 - **Deterministic Amount & Regex Guards**: Protects against LLM floating-point truncation on currency amounts formatted with dots or commas (e.g. `64.120 VND` is reliably extracted as `64120`, preventing truncation to `64`).
 - **Package-free UV App**: Managed via `pyproject.toml` with fast virtual environments via `uv`.
 

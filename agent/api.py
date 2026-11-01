@@ -40,6 +40,14 @@ def fetch_accounts(client: httpx.Client, headers: dict) -> dict:
     return account_map
 
 
+def fetch_account_detail(account_id: str) -> dict:
+    headers = {"X-Api-Key": SURE_API_KEY}
+    with httpx.Client(base_url=SURE_API_URL) as client:
+        response = client.get(f"accounts/{account_id}", headers=headers, timeout=10)
+        response.raise_for_status()
+        return response.json()
+
+
 def fetch_categories(client: httpx.Client, headers: dict) -> dict:
     category_map = {}
     page = 1
