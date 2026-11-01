@@ -29,7 +29,10 @@ EXTRACTION_SCHEMA = {
     "name": "string (short title/merchant, e.g. 'Coffee', 'Grab Ride', 'Banh Mi')",
     "currency": "string (e.g. VND, USD, EUR)",
     "date": "string (YYYY-MM-DD format)",
-    "category": "string (must match one of the available categories exactly)",
     "nature": "string ('income' or 'expense')",
+}
+
+CATEGORIZATION_SCHEMA = {
+    "category": "string (must match one of the available categories exactly)",
 }
 

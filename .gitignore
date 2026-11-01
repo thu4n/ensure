@@ -17,3 +17,6 @@ wheels/
 # Private local test data
 tests/data/*.local.txt
 tests/data/private/
+
+# Data exports
+*.csv

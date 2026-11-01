@@ -10,13 +10,26 @@ sys.path.insert(0, str(BASE_DIR))
 
 from agent.api import load_data
 from agent.config import MODEL_ID
-from agent.extractor import extract_notification_details, extract_transaction_details
-from agent.resolver import build_payload
+from agent.extractor import (
+    categorize_transaction,
+    extract_notification_details,
+    extract_transaction_details,
+)
+from agent.resolver import build_import_csv, build_import_row, resolve_category_id
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
-def test_item(raw_text: str, label: str, category_map: dict, account_map: dict, category_samples: dict, model, tokenizer, timestamp: str = None):
+def test_item(
+    raw_text: str,
+    label: str,
+    category_map: dict,
+    account_map: dict,
+    category_samples: dict,
+    model,
+    tokenizer,
+    timestamp: str = None,
+):
     print(f"\n{'=' * 20} Testing: {label} {'=' * 20}")
     print("--- Raw Input ---")
     print(raw_text)
@@ -44,13 +57,35 @@ def test_item(raw_text: str, label: str, category_map: dict, account_map: dict, 
             tokenizer=tokenizer,
         )
 
-    print("\n--- Model Extracted JSON ---")
+    print("\n--- [Phase 1] Model Extracted JSON (No Category) ---")
     print(json.dumps(parsed, indent=2, ensure_ascii=False))
 
-    payload = build_payload(parsed, category_map, account_map)
+    import_row = build_import_row(parsed, account_map)
+    csv_preview = build_import_csv([import_row])
 
-    print("\n--- Resolved API Payload (Dry Run) ---")
-    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    print("\n--- [Phase 1] Generated Import CSV (Dry Run) ---")
+    print(csv_preview.strip())
+
+    # Simulate Phase 2: if Sure rules didn't categorize it, test local LLM categorization
+    simulated_tx = {
+        "name": import_row["name"],
+        "amount": abs(import_row["amount"]),
+        "classification": parsed.get("nature", "expense"),
+        "date": import_row["date"],
+        "notes": import_row["notes"],
+        "account": {"name": parsed.get("account", "")},
+    }
+    cat_name = categorize_transaction(
+        simulated_tx,
+        category_map=category_map,
+        category_samples=category_samples,
+        model=model,
+        tokenizer=tokenizer,
+    )
+    cat_id = resolve_category_id(cat_name, category_map)
+
+    print("\n--- [Phase 2] Fallback LLM Categorization (If Uncategorized After Import) ---")
+    print(json.dumps({"category": cat_name, "category_id": cat_id}, indent=2, ensure_ascii=False))
 
 
 def main():
@@ -83,7 +118,7 @@ def main():
         print("No test data found in tests/data/ and no arguments provided.", file=sys.stderr)
         sys.exit(1)
 
-    # 1. Load cached categories and accounts (offline)
+    # 1. Load cached categories and accounts
     category_map, account_map, category_samples = load_data()
 
     # 2. Load model once

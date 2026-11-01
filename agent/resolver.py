@@ -1,4 +1,6 @@
+import csv
 from datetime import datetime
+import io
 
 from agent.config import DEFAULT_ACCOUNT_ID, DEFAULT_CATEGORY_ID
 
@@ -53,7 +55,8 @@ def resolve_account_id(account_name: str, account_map: dict) -> str:
 
 
 def build_payload(parsed: dict, category_map: dict, account_map: dict) -> dict:
-    category_id = resolve_category_id(parsed.get("category", ""), category_map)
+    raw_cat = parsed.get("category", "")
+    category_id = resolve_category_id(raw_cat, category_map) if raw_cat else None
     account_id = resolve_account_id(parsed.get("account", ""), account_map)
     nature = parsed.get("nature", "expense")
     if nature not in ("income", "expense"):
@@ -75,4 +78,55 @@ def build_payload(parsed: dict, category_map: dict, account_map: dict) -> dict:
             "user_modified": True,
         }
     }
+
+
+def build_import_row(parsed: dict, account_map: dict) -> dict:
+    account_id = resolve_account_id(parsed.get("account", ""), account_map)
+    nature = parsed.get("nature", "expense")
+    if nature not in ("income", "expense"):
+        nature = "expense"
+
+    raw_amount = abs(int(parsed.get("amount", 0) or 0))
+    signed_amount = raw_amount if nature == "income" else -raw_amount
+
+    name = (parsed.get("name") or "Unknown Transaction").strip()
+    desc = (parsed.get("description") or "").strip()
+    notes = (parsed.get("notes") or "").strip()
+    tx_time = (parsed.get("time") or "").strip()
+
+    note_parts = []
+    if desc and desc != name:
+        note_parts.append(desc)
+    if tx_time and f"Time: {tx_time}" not in desc and f"Time: {tx_time}" not in notes:
+        note_parts.append(f"Time: {tx_time}")
+    if notes:
+        note_parts.append(notes)
+
+    combined_notes = " | ".join(note_parts)
+
+    return {
+        "account_id": account_id,
+        "date": parsed.get("date", datetime.now().strftime("%Y-%m-%d")),
+        "amount": signed_amount,
+        "name": name,
+        "notes": combined_notes,
+        "currency": parsed.get("currency", "VND"),
+    }
+
+
+def build_import_csv(rows: list[dict]) -> str:
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(["Date", "Amount", "Name", "Notes", "Currency"])
+    for r in rows:
+        writer.writerow(
+            [
+                r.get("date", ""),
+                r.get("amount", 0),
+                r.get("name", ""),
+                r.get("notes", ""),
+                r.get("currency", "VND"),
+            ]
+        )
+    return buf.getvalue()
 

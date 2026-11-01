@@ -1,5 +1,6 @@
 import json
 import sys
+import time
 import httpx
 
 from agent.config import (
@@ -117,7 +118,10 @@ def cache_history() -> tuple[dict, dict, dict]:
     CATEGORY_SAMPLES_CACHE_FILE.write_text(
         json.dumps(category_samples, indent=2), encoding="utf-8"
     )
-    print(f"History cached successfully to {CATEGORY_SAMPLES_CACHE_FILE}.")
+    rules_file = DATA_DIR / "rules.json"
+    if rules_file.exists():
+        rules_file.unlink()
+    print(f"History cached successfully to {DATA_DIR}.")
     return category_map, account_map, category_samples
 
 
@@ -154,7 +158,6 @@ def load_data(force_update: bool = False) -> tuple[dict, dict, dict]:
     return category_map, account_map, category_samples
 
 
-
 def post_transaction(payload: dict):
     headers = {
         "X-Api-Key": SURE_API_KEY,
@@ -164,6 +167,123 @@ def post_transaction(payload: dict):
         response = client.post("transactions", json=payload, headers=headers, timeout=10)
         response.raise_for_status()
         return response.json()
+
+
+def create_transaction_import(account_id: str, csv_content: str) -> dict:
+    headers = {
+        "X-Api-Key": SURE_API_KEY,
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "type": "TransactionImport",
+        "account_id": account_id,
+        "raw_file_content": csv_content,
+        "publish": "true",
+        "date_col_label": "Date",
+        "amount_col_label": "Amount",
+        "name_col_label": "Name",
+        "notes_col_label": "Notes",
+        "currency_col_label": "Currency",
+        "date_format": "%Y-%m-%d",
+        "number_format": "1,234.56",
+        "signage_convention": "inflows_positive",
+        "col_sep": ",",
+        "amount_type_strategy": "signed_amount",
+    }
+    with httpx.Client(base_url=SURE_API_URL) as client:
+        response = client.post("imports", json=payload, headers=headers, timeout=20)
+        response.raise_for_status()
+        return response.json()
+
+
+def wait_for_import_completion(import_id: str, timeout_s: float = 30.0) -> dict:
+    headers = {"X-Api-Key": SURE_API_KEY}
+    deadline = time.time() + timeout_s
+    last_data = {}
+
+    with httpx.Client(base_url=SURE_API_URL) as client:
+        while time.time() < deadline:
+            resp = client.get(f"imports/{import_id}", headers=headers, timeout=10)
+            resp.raise_for_status()
+            last_data = resp.json().get("data", {})
+            status = last_data.get("status")
+            terminal = last_data.get("status_detail", {}).get("terminal", False)
+
+            if status == "failed":
+                raise RuntimeError(f"Import {import_id} failed: {last_data.get('error')}")
+            if status == "complete" or terminal:
+                break
+            time.sleep(0.5)
+
+        # Wait briefly for any triggered post-import account sync / rule execution to settle
+        sync_deadline = min(deadline, time.time() + 5.0)
+        while time.time() < sync_deadline:
+            try:
+                s_resp = client.get("syncs/latest", headers=headers, timeout=5)
+                if s_resp.status_code == 200:
+                    s_data = s_resp.json().get("data")
+                    if not s_data or not s_data.get("in_progress"):
+                        break
+            except Exception:
+                break
+            time.sleep(0.4)
+
+    return last_data
+
+
+def fetch_uncategorized_transactions(
+    start_date: str = None,
+    end_date: str = None,
+    account_ids: list[str] = None,
+) -> list[dict]:
+    headers = {"X-Api-Key": SURE_API_KEY}
+    uncategorized = []
+    page = 1
+
+    with httpx.Client(base_url=SURE_API_URL) as client:
+        while True:
+            params: dict = {"page": page, "per_page": 100}
+            if start_date:
+                params["start_date"] = start_date
+            if end_date:
+                params["end_date"] = end_date
+            if account_ids:
+                if len(account_ids) == 1:
+                    params["account_id"] = account_ids[0]
+                else:
+                    params["account_ids[]"] = account_ids
+
+            resp = client.get("transactions", params=params, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            for tx in data.get("transactions", []):
+                # Exclude transfers (which naturally have category=None)
+                if tx.get("category") is None and tx.get("transfer") is None:
+                    uncategorized.append(tx)
+
+            pagination = data.get("pagination", {})
+            if page >= pagination.get("total_pages", 1):
+                break
+            page += 1
+
+    return uncategorized
+
+
+def update_transaction_category(transaction_id: str, category_id: str) -> dict:
+    headers = {
+        "X-Api-Key": SURE_API_KEY,
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "transaction": {
+            "category_id": category_id,
+            "user_modified": True,
+        }
+    }
+    with httpx.Client(base_url=SURE_API_URL) as client:
+        resp = client.patch(f"transactions/{transaction_id}", json=payload, headers=headers, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
 
 
 def fetch_pending_transactions() -> list[dict]:
