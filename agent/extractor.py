@@ -120,11 +120,10 @@ def extract_transaction_details(
                 "If the user doesn't state a date or time in the input, use today's date.\n\n"
                 f"Available accounts:\n{available_accounts}\n\n"
                 "Instruction for accounts:\n"
-                "- Choose from the Available accounts list using the institution, account type, and subtype for context.\n"
-                "- If the input mentions 'THE TIN DUNG' or credit card, choose the corresponding account with Type: credit_card.\n"
-                "- For bank transactions/transfers (e.g. TP Bank), use the primary checking / ATM account (Subtype: checking, e.g. 'Main ATM'). Do NOT choose savings or emergency funds (e.g. 'Emergency Fund') unless explicitly specified.\n"
-                "- If none specified, default to Wallet.\n"
-                "- The 'account' field in your JSON output must be ONLY the exact account name (do not include the details in parentheses).\n\n"
+                "- DEFAULT TO 'Wallet': Whenever the user provides a casual or manual spending prompt (e.g. '6k for parking', 'coffee 35k', 'an trua 50k') without explicitly specifying another account or bank, the account is ALWAYS 'Wallet' (100% of the time).\n"
+                "- If the input explicitly mentions 'THE TIN DUNG', credit card, or a specific card/bank, choose that corresponding account.\n"
+                "- For bank transactions/transfers where a bank is named (e.g. TP Bank), use the primary checking / ATM account (Subtype: checking, e.g. 'Main ATM'). Do NOT choose savings or emergency funds unless explicitly specified.\n"
+                "- The 'account' field in your JSON output must be ONLY the exact account name (e.g. 'Wallet').\n\n"
                 "Instruction for amount:\n"
                 "- Parse 'amount' as positive numeric value: convert 45k -> 45000, and treat dots/commas as thousand separators in VND (e.g. '64.120' or '64,120' -> 64120, not 64).\n\n"
                 "Instruction for nature:\n"
@@ -162,6 +161,25 @@ def extract_transaction_details(
                     if (inst and inst in low_input) or (inst_nospace and inst_nospace in low_input) or (acc_name_low and acc_name_low in low_input):
                         parsed["account"] = name
                         break
+    else:
+        # For manual prompts, enforce default to Wallet unless the user explicitly specified another account or institution
+        current_acc = parsed.get("account", "").strip()
+        if current_acc != "Wallet":
+            mentioned_other = False
+            if account_map:
+                for acc_name, acc_info in account_map.items():
+                    if acc_name.lower() == "wallet":
+                        continue
+                    acc_name_low = acc_name.lower()
+                    inst = str(acc_info.get("institution_name") or "").lower().strip() if isinstance(acc_info, dict) else ""
+                    if (acc_name_low and acc_name_low in low_input) or (inst and inst in low_input):
+                        mentioned_other = True
+                        break
+            if not mentioned_other and any(kw in low_input for kw in ("the tin dung", "credit", "visa", "atm", "bank", "tpbank", "scb", "bidv", "mastercard")):
+                mentioned_other = True
+
+            if not mentioned_other:
+                parsed["account"] = "Wallet"
 
     return parsed
 

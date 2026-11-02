@@ -196,7 +196,7 @@ def create_transaction_import(account_id: str, csv_content: str) -> dict:
         return response.json()
 
 
-def wait_for_import_completion(import_id: str, timeout_s: float = 30.0) -> dict:
+def wait_for_import_completion(import_id: str, timeout_s: float = 60.0) -> dict:
     headers = {"X-Api-Key": SURE_API_KEY}
     deadline = time.time() + timeout_s
     last_data = {}
@@ -215,18 +215,22 @@ def wait_for_import_completion(import_id: str, timeout_s: float = 30.0) -> dict:
                 break
             time.sleep(0.5)
 
-        # Wait briefly for any triggered post-import account sync / rule execution to settle
-        sync_deadline = min(deadline, time.time() + 5.0)
+        # Wait for post-import background sync (Family & child account syncs) and rule jobs to finish
+        sync_deadline = time.time() + 45.0
+        time.sleep(1.0)  # Brief initial pause to let background jobs queue
         while time.time() < sync_deadline:
             try:
-                s_resp = client.get("syncs/latest", headers=headers, timeout=5)
+                s_resp = client.get("syncs?per_page=25", headers=headers, timeout=5)
                 if s_resp.status_code == 200:
-                    s_data = s_resp.json().get("data")
-                    if not s_data or not s_data.get("in_progress"):
+                    syncs = s_resp.json().get("data", [])
+                    has_in_progress = any(s.get("in_progress") for s in syncs)
+                    if not has_in_progress:
+                        # Once syncs finalize, allow a short window for ApplyRulesJob to execute
+                        time.sleep(1.5)
                         break
             except Exception:
                 break
-            time.sleep(0.4)
+            time.sleep(1.0)
 
     return last_data
 

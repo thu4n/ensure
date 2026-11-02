@@ -29,7 +29,11 @@ def resolve_category_id(category_name: str, category_map: dict) -> str:
 
 
 def resolve_account_id(account_name: str, account_map: dict) -> str:
-    fallback = DEFAULT_ACCOUNT_ID or ""
+    wallet_info = account_map.get("Wallet") or account_map.get("wallet")
+    wallet_id = ""
+    if wallet_info:
+        wallet_id = wallet_info.get("id", "") if isinstance(wallet_info, dict) else str(wallet_info)
+    fallback = DEFAULT_ACCOUNT_ID or wallet_id
     if not fallback and account_map:
         first_val = next(iter(account_map.values()))
         fallback = first_val.get("id", "") if isinstance(first_val, dict) else (first_val or "")
